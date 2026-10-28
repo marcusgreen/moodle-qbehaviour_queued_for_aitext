@@ -25,6 +25,8 @@
  * Behaviour variables, in addition to those of qbehaviour_deferred_for_aitext:
  *   _aiqueued         Set on the finish step when grading was queued to a task.
  *   aigrade           Marks the step written by the grade_response task.
+ *   aifailed          Marks the step written when the task gave up, leaving the
+ *                     response for manual grading.
  *   aifraction, aicomment, aiprompt, aispellcheck
  *                     The AI result, stored as submitted vars so regrades replay
  *                     it without another LLM call.
@@ -118,11 +120,30 @@ class qbehaviour_queued_for_aitext extends qbehaviour_deferred_for_aitext {
     }
 
     /**
+     * Record that the grade_response task gave up on this response.
+     *
+     * The response stays in the needsgrading state for the teacher, but the
+     * new step has no _aiqueued variable, so it no longer counts as waiting
+     * for the AI.
+     *
+     * @param question_attempt_pending_step $pendingstep the step being processed.
+     * @return bool question_attempt::KEEP or question_attempt::DISCARD.
+     */
+    protected function process_aifailed(question_attempt_pending_step $pendingstep): bool {
+        if ($this->qa->get_state() !== question_state::$needsgrading) {
+            return question_attempt::DISCARD;
+        }
+        $pendingstep->set_state(question_state::$needsgrading);
+        return question_attempt::KEEP;
+    }
+
+    /**
      * Dispatch the processing of a pending step to the appropriate handler.
      *
      * A pending step with an 'aigrade' behaviour variable carries the result of
-     * the grade_response task and is handled by process_aigrade(). Everything
-     * else, including teacher spellcheck edits, is handled by the parent.
+     * the grade_response task and is handled by process_aigrade(). One with an
+     * 'aifailed' variable is handled by process_aifailed(). Everything else,
+     * including teacher spellcheck edits, is handled by the parent.
      *
      * @param question_attempt_pending_step $pendingstep a partially initialised step
      *      containing all the information about the action being performed.
@@ -131,6 +152,9 @@ class qbehaviour_queued_for_aitext extends qbehaviour_deferred_for_aitext {
     public function process_action(question_attempt_pending_step $pendingstep) {
         if ($pendingstep->has_behaviour_var('aigrade')) {
             return $this->process_aigrade($pendingstep);
+        }
+        if ($pendingstep->has_behaviour_var('aifailed')) {
+            return $this->process_aifailed($pendingstep);
         }
         return parent::process_action($pendingstep);
     }
@@ -144,6 +168,9 @@ class qbehaviour_queued_for_aitext extends qbehaviour_deferred_for_aitext {
     public function summarise_action(question_attempt_step $step) {
         if ($step->has_behaviour_var('aigrade')) {
             return get_string('aigradeaction', 'qbehaviour_queued_for_aitext');
+        }
+        if ($step->has_behaviour_var('aifailed')) {
+            return get_string('aifailedaction', 'qbehaviour_queued_for_aitext');
         }
         return parent::summarise_action($step);
     }

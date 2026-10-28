@@ -58,6 +58,9 @@ class testable_grade_response extends grade_response {
     /** @var callable|null run inside grade(), standing in for work done elsewhere during the LLM call. */
     public static $duringgrade = null;
 
+    /** @var \Throwable|null thrown by grade(), standing in for an unexpected backend error. */
+    public static $exception = null;
+
     #[\Override]
     protected function grade(question_attempt $qa): ?array {
         self::$calls++;
@@ -65,6 +68,9 @@ class testable_grade_response extends grade_response {
             $callback = self::$duringgrade;
             self::$duringgrade = null;
             $callback();
+        }
+        if (self::$exception) {
+            throw self::$exception;
         }
         return self::$result;
     }
@@ -101,6 +107,7 @@ final class queued_grading_test extends \advanced_testcase {
         ];
         testable_grade_response::$calls = 0;
         testable_grade_response::$duringgrade = null;
+        testable_grade_response::$exception = null;
 
         $course = $this->getDataGenerator()->create_course();
         $this->student = $this->getDataGenerator()->create_user();
@@ -288,7 +295,43 @@ final class queued_grading_test extends \advanced_testcase {
         // Final attempt: no exception, response stays for the teacher.
         $this->expectOutputRegex('/left for manual grading/');
         $this->run_queued_tasks(1);
-        $this->assertSame(question_state::$needsgrading, $this->load_qa($attempt)->get_state());
+        $qa = $this->load_qa($attempt);
+        $this->assertSame(question_state::$needsgrading, $qa->get_state());
+        $this->assertTrue($qa->get_last_step()->has_behaviour_var('aifailed'));
+        $this->assertSame('AI grading failed', $qa->get_behaviour()->summarise_action($qa->get_last_step()));
+    }
+
+    public function test_failed_grading_no_longer_pending(): void {
+        $attempt = $this->submit_attempt();
+        $this->getDataGenerator()->enrol_user($this->student->id, $this->quiz->course, 'student');
+        $this->setUser($this->student);
+        testable_grade_response::$result = null;
+
+        $this->expectOutputRegex('/left for manual grading/');
+        $this->run_queued_tasks(1);
+
+        // The review page stops waiting, and the teacher can still grade the response.
+        $this->assertSame(['total' => 1, 'pending' => 0], get_grading_status::execute($attempt->uniqueid));
+        $quba = question_engine::load_questions_usage_by_activity($attempt->uniqueid);
+        $quba->manual_grade(1, 'Teacher says good.', 1.0, FORMAT_HTML);
+        question_engine::save_questions_usage_by_activity($quba);
+        $this->assertSame(question_state::$mangrright, $this->load_qa($attempt)->get_state());
+    }
+
+    public function test_exception_retried_then_left_for_manual_grading(): void {
+        $attempt = $this->submit_attempt();
+        testable_grade_response::$exception = new \RuntimeException('Connection reset');
+
+        try {
+            $this->run_queued_tasks(3);
+            $this->fail('Expected the exception to reach cron so it retries the task.');
+        } catch (\RuntimeException $e) {
+            $this->assertSame('Connection reset', $e->getMessage());
+        }
+
+        $this->expectOutputRegex('/threw an exception.*Connection reset.*left for manual grading/s');
+        $this->run_queued_tasks(1);
+        $this->assertTrue($this->load_qa($attempt)->get_last_step()->has_behaviour_var('aifailed'));
     }
 
     public function test_grade_logs_call_timing(): void {

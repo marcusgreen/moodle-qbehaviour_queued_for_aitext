@@ -95,13 +95,25 @@ class grade_response extends \core\task\adhoc_task {
             return;
         }
 
-        $result = $this->grade($qa);
+        $lastattempt = $this->get_attempts_available() <= 1;
+        try {
+            $result = $this->grade($qa);
+        } catch (\Throwable $e) {
+            if (!$lastattempt) {
+                throw $e;
+            }
+            mtrace("AI grading threw an exception for usage {$data->qubaid} slot {$data->slot}: " . $e->getMessage());
+            $result = null;
+        }
+
         if ($result === null) {
-            if ($this->get_attempts_available() > 1) {
+            if (!$lastattempt) {
                 // Throwing makes cron retry with exponential backoff.
                 throw new \moodle_exception('err_aigradingfailed', 'qbehaviour_queued_for_aitext');
             }
             mtrace("AI grading failed for usage {$data->qubaid} slot {$data->slot}, left for manual grading.");
+            // Record the failure so the response no longer counts as waiting for the AI.
+            $this->apply_grade($data->qubaid, $data->slot, ['-aifailed' => 1]);
             return;
         }
 
@@ -175,7 +187,7 @@ class grade_response extends \core\task\adhoc_task {
     }
 
     /**
-     * Store the AI grade in the usage and update the owning activity's grades.
+     * Store the AI grade, or the failure, in the usage and update the owning activity's grades.
      *
      * The action is processed directly rather than through simulated POST data,
      * so the -ai* variables are never accepted from a browser request.
@@ -187,7 +199,7 @@ class grade_response extends \core\task\adhoc_task {
      *
      * @param int $qubaid
      * @param int $slot
-     * @param array $vars behaviour vars for the -aigrade action.
+     * @param array $vars behaviour vars for the -aigrade or -aifailed action.
      */
     protected function apply_grade(int $qubaid, int $slot, array $vars): void {
         global $DB;

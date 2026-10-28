@@ -22,7 +22,9 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+$string['aifailedaction'] = 'AI grading failed';
 $string['aigradeaction'] = 'Graded by AI';
+$string['aigradingfailed'] = 'This response could not be graded by AI. Your teacher will grade it.';
 $string['aigradingfinished'] = 'AI grading has finished. Loading your feedback...';
 $string['aigradingprogress'] = 'Your answers have been submitted. {$a->graded} of {$a->total} graded by AI so far. This page will refresh when grading has finished.';
 $string['aigradingqueued'] = 'This response is queued for AI grading. The grade and feedback will appear here once grading has finished.';

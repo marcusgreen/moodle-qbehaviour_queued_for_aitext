@@ -39,7 +39,7 @@ require_once($CFG->dirroot . '/question/behaviour/deferred_for_aitext/renderer.p
  */
 class qbehaviour_queued_for_aitext_renderer extends qbehaviour_deferred_for_aitext_renderer {
     /**
-     * Show a notice while the response is waiting for AI grading.
+     * Show a notice while the response is waiting for AI grading, or if the AI could not grade it.
      *
      * @param question_attempt $qa a question attempt.
      * @param question_display_options $options controls what should and should not be displayed.
@@ -47,6 +47,15 @@ class qbehaviour_queued_for_aitext_renderer extends qbehaviour_deferred_for_aite
      */
     public function feedback(question_attempt $qa, question_display_options $options) {
         $output = parent::feedback($qa, $options);
+        if (
+            $qa->get_state() === question_state::$needsgrading
+            && $qa->get_last_step()->has_behaviour_var('aifailed')
+        ) {
+            $output .= html_writer::div(
+                get_string('aigradingfailed', 'qbehaviour_queued_for_aitext'),
+                'alert alert-warning qbehaviour_queued_for_aitext-failed'
+            );
+        }
         if (
             $qa->get_state() === question_state::$needsgrading
             && $qa->get_last_step()->has_behaviour_var('_aiqueued')

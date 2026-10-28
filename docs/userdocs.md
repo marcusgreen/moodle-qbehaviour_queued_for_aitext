@@ -59,7 +59,10 @@ there once the tasks have run.
 If the AI backend does not return a grade, for example because of a timeout or
 a rate limit, the task is retried automatically, with an increasing delay
 between attempts. After 5 failed attempts the response is left in the
-"Requires grading" state, so a teacher can grade it manually.
+"Requires grading" state, so a teacher can grade it manually. The attempt
+history shows an "AI grading failed" step, and the question shows the notice
+*"This response could not be graded by AI. Your teacher will grade it."* The
+review page stops waiting for that response.
 
 If a teacher grades a response manually while it is still waiting for the AI,
 the teacher's grade is kept and the AI result is discarded when it arrives.

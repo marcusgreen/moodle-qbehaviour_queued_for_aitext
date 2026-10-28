@@ -30,8 +30,12 @@ These are copied to the same cached variables (`_comment`, `_aiprompt`,
 rendering and manual grading work unchanged. Regrades replay the `-aigrade`
 step without calling the LLM again.
 
+If the AI still fails after 5 attempts, the task writes an `-aifailed` step.
+The response stays in `needsgrading` for the teacher but no longer counts as
+waiting for the AI.
+
 The review page polls the `qbehaviour_queued_for_aitext_get_grading_status`
-web service and reloads once every queued response has been graded.
+web service and reloads once no queued response is still waiting.
 
 ## Requirements
 
