@@ -37,6 +37,11 @@ waiting for the AI.
 The review page polls the `qbehaviour_queued_for_aitext_get_grading_status`
 web service and reloads once no queued response is still waiting.
 
+When the last response in a quiz attempt has been graded, the task sends the
+quiz's own `attempt_grading_complete` notification straight away, with the
+same checks as mod_quiz's hourly task, and sets
+`quiz_attempts.gradednotificationsenttime` so that task does not send it again.
+
 ## Requirements
 
 - Moodle 4.5 or later

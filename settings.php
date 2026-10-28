@@ -32,6 +32,13 @@ if ($ADMIN->fulltree) {
         0
     ));
 
+    $settings->add(new admin_setting_configcheckbox(
+        'qbehaviour_queued_for_aitext/notify',
+        new lang_string('notify', 'qbehaviour_queued_for_aitext'),
+        new lang_string('notify_desc', 'qbehaviour_queued_for_aitext'),
+        1
+    ));
+
     $settings->add(new admin_setting_configtext(
         'qbehaviour_queued_for_aitext/concurrency',
         new lang_string('concurrency', 'qbehaviour_queued_for_aitext'),

@@ -86,6 +86,7 @@ class testable_grade_response extends grade_response {
  * @covers     \qbehaviour_queued_for_aitext
  * @covers     \qbehaviour_queued_for_aitext\task\grade_response
  * @covers     \qbehaviour_queued_for_aitext\external\get_grading_status
+ * @covers     \qbehaviour_queued_for_aitext\local\graded_notification
  */
 final class queued_grading_test extends \advanced_testcase {
     /** @var \stdClass the quiz. */
@@ -349,6 +350,80 @@ final class queued_grading_test extends \advanced_testcase {
         $task->execute();
     }
 
+    public function test_notifies_once_when_last_response_graded(): void {
+        global $DB;
+        $this->allow_graded_notification();
+        $this->add_second_question();
+        $attempt = $this->submit_attempt(2);
+        $tasks = array_values(\core\task\manager::get_adhoc_tasks(grade_response::class));
+        $sink = $this->redirectMessages();
+
+        $first = new testable_grade_response();
+        $first->set_custom_data($tasks[0]->get_custom_data());
+        $first->execute();
+        $this->assertEmpty($this->graded_messages($sink));
+
+        $second = new testable_grade_response();
+        $second->set_custom_data($tasks[1]->get_custom_data());
+        $second->execute();
+        $messages = $this->graded_messages($sink);
+        $this->assertCount(1, $messages);
+        $this->assertEquals($this->student->id, $messages[0]->useridto);
+
+        // The message links straight to the attempt review, as a clickable link in the HTML version.
+        $reviewurl = new \moodle_url('/mod/quiz/review.php', ['attempt' => $attempt->id, 'cmid' => $this->quiz->cmid]);
+        $this->assertSame($reviewurl->out(false), $messages[0]->contexturl);
+        $this->assertStringContainsString($reviewurl->out(false), $messages[0]->fullmessage);
+        $this->assertStringContainsString('<a href="' . $reviewurl->out() . '">', $messages[0]->fullmessagehtml);
+
+        // Marked as sent, so the core quiz task does not send it again.
+        $this->assertNotNull($DB->get_field('quiz_attempts', 'gradednotificationsenttime', ['id' => $attempt->id]));
+    }
+
+    public function test_no_notification_without_capability(): void {
+        set_config('notify', 1, 'qbehaviour_queued_for_aitext');
+        $this->submit_attempt();
+        $sink = $this->redirectMessages();
+
+        $this->run_queued_tasks();
+        $this->assertEmpty($this->graded_messages($sink));
+    }
+
+    public function test_no_notification_when_disabled(): void {
+        $this->allow_graded_notification();
+        set_config('notify', 0, 'qbehaviour_queued_for_aitext');
+        $attempt = $this->submit_attempt();
+        $sink = $this->redirectMessages();
+
+        $this->run_queued_tasks();
+        $this->assertEmpty($this->graded_messages($sink));
+        $this->assertNull($this->get_graded_notification_time($attempt));
+    }
+
+    public function test_notification_left_for_core_task_when_comments_hidden(): void {
+        global $DB;
+        $this->allow_graded_notification();
+        $DB->set_field('quiz', 'reviewspecificfeedback', 0, ['id' => $this->quiz->id]);
+        $attempt = $this->submit_attempt();
+        $sink = $this->redirectMessages();
+
+        $this->run_queued_tasks();
+        $this->assertEmpty($this->graded_messages($sink));
+        $this->assertNull($this->get_graded_notification_time($attempt));
+    }
+
+    public function test_no_notification_while_a_response_needs_the_teacher(): void {
+        $this->allow_graded_notification();
+        $attempt = $this->submit_attempt();
+        testable_grade_response::$result = null;
+        $sink = $this->redirectMessages();
+
+        $this->expectOutputRegex('/left for manual grading/');
+        $this->run_queued_tasks(1);
+        $this->assertEmpty($this->graded_messages($sink));
+        $this->assertNull($this->get_sumgrades($attempt));
+    }
+
     public function test_concurrency_limit_from_setting(): void {
         $task = new grade_response();
         $this->assertSame(grade_response::DEFAULT_CONCURRENCY, $task->get_concurrency_limit());
@@ -401,6 +476,35 @@ final class queued_grading_test extends \advanced_testcase {
     }
 
     /**
+     * Enrol the student and let them receive the quiz's "attempt graded" notification.
+     */
+    private function allow_graded_notification(): void {
+        global $DB;
+        set_config('notify', 1, 'qbehaviour_queued_for_aitext');
+        $this->getDataGenerator()->enrol_user($this->student->id, $this->quiz->course, 'student');
+        $roleid = $DB->get_field('role', 'id', ['shortname' => 'student']);
+        assign_capability(
+            'mod/quiz:emailnotifyattemptgraded',
+            CAP_ALLOW,
+            $roleid,
+            \context_module::instance($this->quiz->cmid)->id
+        );
+    }
+
+    /**
+     * Get the "attempt graded" notifications caught by a message sink.
+     *
+     * @param \phpunit_message_sink $sink
+     * @return array
+     */
+    private function graded_messages(\phpunit_message_sink $sink): array {
+        return array_values(array_filter(
+            $sink->get_messages(),
+            fn($m) => $m->component === 'mod_quiz' && $m->eventtype === 'attempt_grading_complete'
+        ));
+    }
+
+    /**
      * Add a second aitext question, worth one mark, to the quiz.
      */
     private function add_second_question(): void {
@@ -421,5 +525,16 @@ final class queued_grading_test extends \advanced_testcase {
     private function get_sumgrades(\stdClass $attempt): ?string {
         global $DB;
         return $DB->get_field('quiz_attempts', 'sumgrades', ['id' => $attempt->id]);
+    }
+
+    /**
+     * Read when the "attempt graded" notification was sent.
+     *
+     * @param \stdClass $attempt
+     * @return string|null
+     */
+    private function get_graded_notification_time(\stdClass $attempt): ?string {
+        global $DB;
+        return $DB->get_field('quiz_attempts', 'gradednotificationsenttime', ['id' => $attempt->id]);
     }
 }

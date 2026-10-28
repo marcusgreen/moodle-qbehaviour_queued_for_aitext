@@ -44,6 +44,7 @@ there once the tasks have run.
 | Setting | Description |
 |---------|-------------|
 | Grade AI Text responses in the background | Turns background grading on or off. Off by default. Only attempts started after the setting is changed are affected. |
+| Notify students straight away | Sends the quiz's "Your attempt has been graded" notification as soon as the AI has graded the last response in an attempt. On by default. See [Notifying students](#notifying-students). |
 | Maximum concurrent AI grading tasks | The maximum number of grading tasks that run at the same time, which is also the maximum number of requests sent to the AI backend at once. The default is 2. 0 means no limit. Keep this below the site's *Ad hoc task runner limit* (`task_adhoc_concurrency_limit`) so other background tasks are not held up. |
 
 ## Before you start
@@ -69,6 +70,38 @@ the teacher's grade is kept and the AI result is discarded when it arrives.
 
 The background tasks run as the student who submitted the attempt, so any
 per-user permissions or quotas configured for the AI backend still apply.
+
+## Notifying students
+
+When grading takes a long time, students do not need to keep the review page
+open. Moodle's quiz can tell them when their attempt has been graded, through
+the notification *"Your attempt at ... has been graded"*. Students choose how
+they receive it (site notification, email, Moodle app) in their notification
+preferences.
+
+By default the quiz sends this message from an hourly task, and only once the
+attempt has not changed for the *Attempt graded notification delay*
+(`quiz/notifyattemptgradeddelay`, 5 hours by default). With **Notify students
+straight away** on, this plugin sends the same message as soon as the AI has
+graded the last response, and marks it as sent so the quiz does not send it
+a second time.
+
+To turn notifications on:
+
+1. Give the Student role the capability *Receive notification when your
+   attempt has been graded* (`mod/quiz:emailnotifyattemptgraded`). No role has
+   it by default, so no notifications are sent until you do this.
+2. Check that the quiz review options show *Specific feedback* at the time
+   grading finishes, usually *Later, while the quiz is still open*. While
+   feedback is hidden, the message is not sent. The quiz's hourly task sends it
+   once the feedback becomes visible, for example when the quiz closes.
+
+When a student who will be notified views the review page, the progress banner
+adds *"You can leave this page. You will get a notification when grading has
+finished."*
+
+If a response could not be graded by the AI, the attempt is not complete until
+a teacher grades it. The quiz's hourly task then sends the notification.
 
 ## Running the AI on slow hardware
 

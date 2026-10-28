@@ -67,20 +67,26 @@ const createBanner = () => {
  *
  * @param {HTMLElement} banner
  * @param {{total: number, pending: number}} status
+ * @param {boolean} notify whether the student will be notified when grading has finished.
  */
-const showStatus = async(banner, status) => {
-    banner.textContent = await getString('aigradingprogress', 'qbehaviour_queued_for_aitext', {
+const showStatus = async(banner, status, notify) => {
+    let text = await getString('aigradingprogress', 'qbehaviour_queued_for_aitext', {
         graded: status.total - status.pending,
         total: status.total,
     });
+    if (notify) {
+        text += ' ' + await getString('aigradingnotify', 'qbehaviour_queued_for_aitext');
+    }
+    banner.textContent = text;
 };
 
 /**
  * Start watching a usage.
  *
  * @param {number} qubaid the question usage id.
+ * @param {boolean} notify whether the student will be notified when grading has finished.
  */
-export const init = (qubaid) => {
+export const init = (qubaid, notify = false) => {
     if (watched.has(qubaid)) {
         return;
     }
@@ -106,7 +112,7 @@ export const init = (qubaid) => {
             return;
         }
         if (banner) {
-            await showStatus(banner, status);
+            await showStatus(banner, status, notify);
         }
         if (Date.now() - started < MAX_POLL_TIME) {
             setTimeout(poll, POLL_INTERVAL);

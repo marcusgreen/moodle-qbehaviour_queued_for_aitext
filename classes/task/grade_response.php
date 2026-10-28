@@ -226,6 +226,12 @@ class grade_response extends \core\task\adhoc_task {
                 $this->update_quiz_grades($quba);
             }
             $transaction->allow_commit();
+
+            if ($quba->get_owning_component() === 'mod_quiz') {
+                // After the commit, so a problem sending the message can never undo the grade.
+                // Still under the lock, so two tasks finishing together cannot both send it.
+                $this->notify_student($qubaid);
+            }
         } finally {
             $lock->release();
         }
@@ -252,6 +258,26 @@ class grade_response extends \core\task\adhoc_task {
             \mod_quiz\quiz_settings::create($attempt->quiz)
                 ->get_grade_calculator()
                 ->recompute_final_grade($attempt->userid);
+        }
+    }
+
+    /**
+     * Send the quiz's "attempt graded" notification if the attempt is now fully graded.
+     *
+     * Failures are logged rather than thrown: the grade is already saved, and
+     * the core quiz task will still send the notification later.
+     *
+     * @param int $qubaid
+     */
+    protected function notify_student(int $qubaid): void {
+        global $DB;
+        try {
+            $attempt = $DB->get_record('quiz_attempts', ['uniqueid' => $qubaid]);
+            if ($attempt) {
+                \qbehaviour_queued_for_aitext\local\graded_notification::send_if_graded($attempt);
+            }
+        } catch (\Throwable $e) {
+            mtrace("Could not send the graded notification for usage {$qubaid}: " . $e->getMessage());
         }
     }
 }

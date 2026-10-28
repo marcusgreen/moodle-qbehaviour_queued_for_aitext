@@ -26,6 +26,7 @@ $string['aifailedaction'] = 'AI grading failed';
 $string['aigradeaction'] = 'Graded by AI';
 $string['aigradingfailed'] = 'This response could not be graded by AI. Your teacher will grade it.';
 $string['aigradingfinished'] = 'AI grading has finished. Loading your feedback...';
+$string['aigradingnotify'] = 'You can leave this page. You will get a notification when grading has finished.';
 $string['aigradingprogress'] = 'Your answers have been submitted. {$a->graded} of {$a->total} graded by AI so far. This page will refresh when grading has finished.';
 $string['aigradingqueued'] = 'This response is queued for AI grading. The grade and feedback will appear here once grading has finished.';
 $string['concurrency'] = 'Maximum concurrent AI grading tasks';
@@ -33,6 +34,13 @@ $string['concurrency_desc'] = 'The maximum number of AI grading tasks that may r
 $string['enabled'] = 'Grade AI Text responses in the background';
 $string['enabled_desc'] = 'When enabled, AI Text questions in deferred feedback quizzes are graded by a background task instead of during the request that submits the attempt. Students can submit at once, and the requests to the AI backend are spread over time. Requires cron to run frequently. Only attempts started after this is changed are affected.';
 $string['err_aigradingfailed'] = 'The AI backend did not return a grade. The task will be retried.';
+$string['gradedmessagebody'] = 'Hi {$a->studentname},
+
+Your answers to \'{$a->quizname}\' in course \'{$a->coursename}\' at {$a->attempttimefinish} have now been graded.
+
+You can view your score and feedback by visiting {$a->reviewurl}';
+$string['notify'] = 'Notify students straight away';
+$string['notify_desc'] = 'When the AI has graded the last response in a quiz attempt, send the student the quiz\'s "Your attempt has been graded" notification at once, instead of waiting for the hourly quiz task and the "Attempt graded notification delay". Students only receive it if they have the mod/quiz:emailnotifyattemptgraded capability, which no role has by default, and if the quiz review options let them see comments.';
 $string['pluginname'] = 'Queued AI grading';
 $string['privacy:metadata'] = 'The Queued AI grading behaviour plugin does not store any personal data. AI-generated grading data is stored as question attempt step data, which is managed by the core question engine privacy provider.';
 $string['task_graderesponse'] = 'Grade AI text response';
