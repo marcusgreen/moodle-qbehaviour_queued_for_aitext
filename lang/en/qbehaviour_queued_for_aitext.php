@@ -29,6 +29,7 @@ $string['aigradingfinished'] = 'AI grading has finished. Loading your feedback..
 $string['aigradingnotify'] = 'You can leave this page. You will get a notification when grading has finished.';
 $string['aigradingprogress'] = 'Your answers have been submitted. {$a->graded} of {$a->total} graded by AI so far. This page will refresh when grading has finished.';
 $string['aigradingqueued'] = 'This response is queued for AI grading. The grade and feedback will appear here once grading has finished.';
+$string['aigradingtoast'] = 'Grading has finished. Your results are ready.';
 $string['concurrency'] = 'Maximum concurrent AI grading tasks';
 $string['concurrency_desc'] = 'The maximum number of AI grading tasks that may run at the same time, which is the maximum number of grading requests sent to the AI backend at once. Keep this below the "Ad hoc task runner limit" (task_adhoc_concurrency_limit) so other background tasks are not blocked. 0 means no limit.';
 $string['enabled'] = 'Grade AI Text responses in the background';

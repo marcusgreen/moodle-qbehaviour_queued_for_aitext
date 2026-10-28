@@ -23,9 +23,13 @@
 
 import Ajax from 'core/ajax';
 import {getString} from 'core/str';
+import {add as addToast} from 'core/toast';
 
 /** @var {number} Milliseconds between status checks. */
 const POLL_INTERVAL = 10000;
+
+/** @var {number} Milliseconds to show the "grading finished" toast before reloading. */
+const RELOAD_DELAY = 3000;
 
 /** @var {number} Stop polling after this long, in case cron is not running. */
 const MAX_POLL_TIME = 30 * 60 * 1000;
@@ -108,7 +112,9 @@ export const init = (qubaid, notify = false) => {
                 banner.className = 'alert alert-success qbehaviour_queued_for_aitext-status';
                 banner.textContent = await getString('aigradingfinished', 'qbehaviour_queued_for_aitext');
             }
-            window.location.reload();
+            await addToast(await getString('aigradingtoast', 'qbehaviour_queued_for_aitext'), {type: 'success'});
+            // Leave the toast up long enough to read before the page reloads with the grades.
+            setTimeout(() => window.location.reload(), RELOAD_DELAY);
             return;
         }
         if (banner) {
