@@ -45,16 +45,12 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: marcusgreen/moodle-qtype_aitext
-          # Until the queued behaviour support is merged into the default branch.
-          ref: feature/queued-behaviour
           path: extra-plugins/qtype_aitext
 
       - name: Check out qbehaviour_deferred_for_aitext dependency
         uses: actions/checkout@v4
         with:
           repository: marcusgreen/moodle-qbehaviour_deferred_for_aitext
-          # Until the async grading changes are merged into the default branch.
-          ref: feature/async-grading
           path: extra-plugins/qbehaviour_deferred_for_aitext
 
       - name: Set up PHP ${{ matrix.php }}
