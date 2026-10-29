@@ -25,7 +25,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 $plugin->component = 'qbehaviour_queued_for_aitext';
-$plugin->version   = 2026102801;
+$plugin->version   = 2026102900;
 $plugin->release   = '1.0.0';
 $plugin->requires  = 2024100700; // Moodle 4.5.
 $plugin->maturity  = MATURITY_BETA;

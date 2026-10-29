@@ -61,6 +61,9 @@ class testable_grade_response extends grade_response {
     /** @var \Throwable|null thrown by grade(), standing in for an unexpected backend error. */
     public static $exception = null;
 
+    /** @var int number of apply_grade() calls still to fail, standing in for a lock timeout. */
+    public static $failapply = 0;
+
     #[\Override]
     protected function grade(question_attempt $qa): ?array {
         self::$calls++;
@@ -73,6 +76,15 @@ class testable_grade_response extends grade_response {
             throw self::$exception;
         }
         return self::$result;
+    }
+
+    #[\Override]
+    protected function apply_grade(int $qubaid, int $slot, array $vars): void {
+        if (self::$failapply > 0) {
+            self::$failapply--;
+            throw new \moodle_exception('locktimeout');
+        }
+        parent::apply_grade($qubaid, $slot, $vars);
     }
 }
 
@@ -109,6 +121,7 @@ final class queued_grading_test extends \advanced_testcase {
         testable_grade_response::$calls = 0;
         testable_grade_response::$duringgrade = null;
         testable_grade_response::$exception = null;
+        testable_grade_response::$failapply = 0;
 
         $course = $this->getDataGenerator()->create_course();
         $this->student = $this->getDataGenerator()->create_user();
@@ -166,6 +179,7 @@ final class queued_grading_test extends \advanced_testcase {
         foreach ($tasks as $queued) {
             $task = new testable_grade_response();
             $task->set_custom_data($queued->get_custom_data());
+            $task->set_userid($queued->get_userid());
             $task->set_attempts_available($attemptsavailable);
             $task->execute();
         }
@@ -282,6 +296,27 @@ final class queued_grading_test extends \advanced_testcase {
         $this->assertSame(0, testable_grade_response::$calls);
     }
 
+    public function test_teacher_comment_without_mark_keeps_response_queued(): void {
+        $attempt = $this->submit_attempt();
+
+        $quba = question_engine::load_questions_usage_by_activity($attempt->uniqueid);
+        $quba->manual_grade(1, 'Teacher was here.', null, FORMAT_HTML);
+        question_engine::save_questions_usage_by_activity($quba);
+
+        $qa = $this->load_qa($attempt);
+        $this->assertSame(question_state::$needsgrading, $qa->get_state());
+        $this->assertTrue($qa->get_last_step()->has_behaviour_var('_aiqueued'));
+
+        $this->run_queued_tasks();
+
+        $qa = $this->load_qa($attempt);
+        $this->assertSame(1, testable_grade_response::$calls);
+        $this->assertSame(question_state::$gradedpartial, $qa->get_state());
+        $this->assertEqualsWithDelta(0.5, $qa->get_fraction(), 0.0001);
+        // The teacher's comment is kept, and is shown in preference to the AI comment.
+        $this->assertSame('Teacher was here.', $qa->get_manual_comment()[0]);
+    }
+
     public function test_task_retries_then_leaves_for_manual_grading(): void {
         $attempt = $this->submit_attempt();
         testable_grade_response::$result = null;
@@ -333,6 +368,30 @@ final class queued_grading_test extends \advanced_testcase {
         $this->expectOutputRegex('/threw an exception.*Connection reset.*left for manual grading/s');
         $this->run_queued_tasks(1);
         $this->assertTrue($this->load_qa($attempt)->get_last_step()->has_behaviour_var('aifailed'));
+    }
+
+    public function test_result_saved_by_new_task_when_last_save_fails(): void {
+        global $DB;
+        $attempt = $this->submit_attempt();
+        $original = array_values(\core\task\manager::get_adhoc_tasks(grade_response::class))[0];
+        testable_grade_response::$failapply = 1;
+
+        $this->expectOutputRegex('/Could not save the AI result.*queued a task to save it/');
+        $this->run_queued_tasks(1);
+        $this->assertSame(question_state::$needsgrading, $this->load_qa($attempt)->get_state());
+
+        // The follow-up task carries the result, so it stores it without calling the LLM again.
+        $DB->delete_records('task_adhoc', ['id' => $original->get_id()]);
+        $tasks = array_values(\core\task\manager::get_adhoc_tasks(grade_response::class));
+        $this->assertCount(1, $tasks);
+        $this->assertEquals($this->student->id, $tasks[0]->get_userid());
+        $this->run_queued_tasks();
+
+        $qa = $this->load_qa($attempt);
+        $this->assertSame(1, testable_grade_response::$calls);
+        $this->assertSame(question_state::$gradedpartial, $qa->get_state());
+        $this->assertSame('Half right.', $qa->get_last_behaviour_var('_comment'));
+        $this->assertEqualsWithDelta(0.5, $this->get_sumgrades($attempt), 0.0001);
     }
 
     public function test_grade_logs_call_timing(): void {

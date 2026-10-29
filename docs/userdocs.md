@@ -67,6 +67,9 @@ review page stops waiting for that response.
 
 If a teacher grades a response manually while it is still waiting for the AI,
 the teacher's grade is kept and the AI result is discarded when it arrives.
+If the teacher only adds a comment, without a mark, the response stays queued
+and the AI still grades it. The teacher's comment is shown instead of the AI
+feedback.
 
 The background tasks run as the student who submitted the attempt, so any
 per-user permissions or quotas configured for the AI backend still apply.

@@ -145,6 +145,10 @@ class qbehaviour_queued_for_aitext extends qbehaviour_deferred_for_aitext {
      * 'aifailed' variable is handled by process_aifailed(). Everything else,
      * including teacher spellcheck edits, is handled by the parent.
      *
+     * If the response is waiting for the AI and the step leaves it needing
+     * grading, for example a teacher comment saved without a mark, _aiqueued is
+     * carried onto the new step so the grade_response task still grades it.
+     *
      * @param question_attempt_pending_step $pendingstep a partially initialised step
      *      containing all the information about the action being performed.
      * @return bool question_attempt::KEEP or question_attempt::DISCARD.
@@ -156,7 +160,18 @@ class qbehaviour_queued_for_aitext extends qbehaviour_deferred_for_aitext {
         if ($pendingstep->has_behaviour_var('aifailed')) {
             return $this->process_aifailed($pendingstep);
         }
-        return parent::process_action($pendingstep);
+
+        $waitingforai = $this->qa->get_state() === question_state::$needsgrading
+            && $this->qa->get_last_step()->has_behaviour_var('_aiqueued');
+        $result = parent::process_action($pendingstep);
+        if (
+            $waitingforai
+            && $result === question_attempt::KEEP
+            && $pendingstep->get_state() === question_state::$needsgrading
+        ) {
+            $pendingstep->set_behaviour_var('_aiqueued', 1);
+        }
+        return $result;
     }
 
     /**

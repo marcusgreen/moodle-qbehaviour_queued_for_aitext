@@ -95,6 +95,12 @@ class grade_response extends \core\task\adhoc_task {
             return;
         }
 
+        if (isset($data->vars)) {
+            // A follow-up task: the grade, or the failure, was decided by an earlier task.
+            $this->apply_grade($data->qubaid, $data->slot, (array) $data->vars);
+            return;
+        }
+
         $lastattempt = $this->get_attempts_available() <= 1;
         try {
             $result = $this->grade($qa);
@@ -113,11 +119,44 @@ class grade_response extends \core\task\adhoc_task {
             }
             mtrace("AI grading failed for usage {$data->qubaid} slot {$data->slot}, left for manual grading.");
             // Record the failure so the response no longer counts as waiting for the AI.
-            $this->apply_grade($data->qubaid, $data->slot, ['-aifailed' => 1]);
-            return;
+            $result = ['-aifailed' => 1];
         }
 
-        $this->apply_grade($data->qubaid, $data->slot, $result);
+        if (!$lastattempt) {
+            $this->apply_grade($data->qubaid, $data->slot, $result);
+            return;
+        }
+        try {
+            $this->apply_grade($data->qubaid, $data->slot, $result);
+        } catch (\Throwable $e) {
+            // This task will not be retried, and the response would be left waiting
+            // for the AI for ever. Store the result from a new task instead.
+            mtrace("Could not save the AI result for usage {$data->qubaid} slot {$data->slot}, " .
+                "queued a task to save it: " . $e->getMessage());
+            self::queue_apply($data->qubaid, $data->slot, $result, $this->get_userid());
+        }
+    }
+
+    /**
+     * Queue a task that stores a result already decided, without calling the LLM again.
+     *
+     * @param int $qubaid
+     * @param int $slot
+     * @param array $vars behaviour vars for the -aigrade or -aifailed action.
+     * @param int|null $userid the user the task runs as.
+     */
+    protected static function queue_apply(int $qubaid, int $slot, array $vars, ?int $userid): void {
+        $task = new self();
+        $task->set_custom_data([
+            'qubaid' => $qubaid,
+            'slot' => $slot,
+            'vars' => $vars,
+        ]);
+        if ($userid) {
+            $task->set_userid($userid);
+        }
+        $task->set_attempts_available(self::MAX_ATTEMPTS);
+        \core\task\manager::queue_adhoc_task($task);
     }
 
     /**
@@ -219,13 +258,18 @@ class grade_response extends \core\task\adhoc_task {
             }
 
             $transaction = $DB->start_delegated_transaction();
-            $quba->process_action($slot, $vars);
-            question_engine::save_questions_usage_by_activity($quba);
+            try {
+                $quba->process_action($slot, $vars);
+                question_engine::save_questions_usage_by_activity($quba);
 
-            if ($quba->get_owning_component() === 'mod_quiz') {
-                $this->update_quiz_grades($quba);
+                if ($quba->get_owning_component() === 'mod_quiz') {
+                    $this->update_quiz_grades($quba);
+                }
+                $transaction->allow_commit();
+            } catch (\Throwable $e) {
+                // Rethrows, leaving the database usable if the caller catches the exception.
+                $transaction->rollback($e);
             }
-            $transaction->allow_commit();
 
             if ($quba->get_owning_component() === 'mod_quiz') {
                 // After the commit, so a problem sending the message can never undo the grade.
