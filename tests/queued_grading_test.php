@@ -163,8 +163,13 @@ final class queued_grading_test extends \advanced_testcase {
         }
         $attemptobj->process_submitted_actions($timenow, false, $responses);
         $attemptobj = quiz_attempt::create($attempt->id);
-        $attemptobj->process_submit($timenow, false);
-        $attemptobj->process_grade_submission($timenow);
+        if (method_exists($attemptobj, 'process_submit')) {
+            $attemptobj->process_submit($timenow, false);
+            $attemptobj->process_grade_submission($timenow);
+        } else {
+            // Moodle 4.5, before submitting and grading were split.
+            $attemptobj->process_finish($timenow, false);
+        }
         return $attempt;
     }
 
