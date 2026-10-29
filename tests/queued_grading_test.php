@@ -439,6 +439,23 @@ final class queued_grading_test extends \advanced_testcase {
         $this->assertNotNull($DB->get_field('quiz_attempts', 'gradednotificationsenttime', ['id' => $attempt->id]));
     }
 
+    public function test_notification_escapes_names_once(): void {
+        global $DB;
+        $DB->set_field('quiz', 'name', 'Frogs & Logs', ['id' => $this->quiz->id]);
+        $DB->set_field('course', 'fullname', 'Maths & Stats', ['id' => $this->quiz->course]);
+        $this->allow_graded_notification();
+        $this->submit_attempt();
+        $sink = $this->redirectMessages();
+
+        $this->run_queued_tasks();
+        $messages = $this->graded_messages($sink);
+        $this->assertCount(1, $messages);
+        $this->assertStringContainsString("'Frogs & Logs' in course 'Maths & Stats'", $messages[0]->fullmessage);
+        $this->assertStringContainsString('Frogs &amp; Logs', $messages[0]->fullmessagehtml);
+        $this->assertStringContainsString('Maths &amp; Stats', $messages[0]->fullmessagehtml);
+        $this->assertStringNotContainsString('&amp;amp;', $messages[0]->fullmessagehtml);
+    }
+
     public function test_no_notification_without_capability(): void {
         set_config('notify', 1, 'qbehaviour_queued_for_aitext');
         $this->submit_attempt();

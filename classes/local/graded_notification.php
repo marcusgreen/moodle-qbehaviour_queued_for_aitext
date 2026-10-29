@@ -128,8 +128,9 @@ class graded_notification {
 
         $a = new \stdClass();
         $a->courseid = $attemptobj->get_courseid();
-        $a->coursename = format_string($attemptobj->get_course()->fullname);
-        $a->quizname = format_string($attemptobj->get_quiz_name());
+        // Unescaped here, as the plain-text version must not contain HTML entities.
+        $a->coursename = format_string($attemptobj->get_course()->fullname, true, ['escape' => false]);
+        $a->quizname = format_string($attemptobj->get_quiz_name(), true, ['escape' => false]);
         $a->reviewurl = $reviewurl->out(false);
         $a->attempttimefinish = userdate($attemptobj->get_attempt()->timefinish);
         $a->studentidnumber = $userto->idnumber;
