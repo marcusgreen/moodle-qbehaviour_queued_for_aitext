@@ -69,11 +69,22 @@ class qbehaviour_queued_for_aitext_renderer extends qbehaviour_deferred_for_aite
                 $this->page->requires->js_call_amd(
                     'qbehaviour_queued_for_aitext/grading_status',
                     'init',
-                    [(int) $qa->get_usage_id(), $this->will_notify($qa, $options)]
+                    [(int) $qa->get_usage_id(), $this->is_own_attempt($qa), $this->will_notify($qa, $options)]
                 );
             }
         }
         return $output;
+    }
+
+    /**
+     * Whether the person viewing is the student who made the attempt.
+     *
+     * @param question_attempt $qa a question attempt.
+     * @return bool
+     */
+    protected function is_own_attempt(question_attempt $qa): bool {
+        global $USER;
+        return (int) $qa->get_step(0)->get_user_id() === (int) $USER->id;
     }
 
     /**
@@ -84,10 +95,11 @@ class qbehaviour_queued_for_aitext_renderer extends qbehaviour_deferred_for_aite
      * @return bool
      */
     protected function will_notify(question_attempt $qa, question_display_options $options): bool {
-        global $USER;
-        $studentid = (int) $qa->get_step(0)->get_user_id();
-        return $studentid === (int) $USER->id
+        return $this->is_own_attempt($qa)
             && !empty($options->context)
-            && \qbehaviour_queued_for_aitext\local\graded_notification::will_notify($options->context, $studentid);
+            && \qbehaviour_queued_for_aitext\local\graded_notification::will_notify(
+                $options->context,
+                (int) $qa->get_step(0)->get_user_id()
+            );
     }
 }

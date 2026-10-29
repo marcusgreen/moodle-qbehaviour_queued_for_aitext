@@ -25,14 +25,20 @@ import Ajax from 'core/ajax';
 import {getString} from 'core/str';
 import {add as addToast} from 'core/toast';
 
-/** @var {number} Milliseconds between status checks. */
+/** @var {number} Milliseconds before the second status check. */
 const POLL_INTERVAL = 10000;
+
+/** @var {number} The interval doubles after each check, up to this many milliseconds. */
+const MAX_POLL_INTERVAL = 60000;
 
 /** @var {number} Milliseconds to show the "grading finished" toast before reloading. */
 const RELOAD_DELAY = 3000;
 
-/** @var {number} Stop polling after this long, in case cron is not running. */
-const MAX_POLL_TIME = 30 * 60 * 1000;
+/**
+ * @var {number} Stop polling after this long, in case cron is not running.
+ * Longer than the grade_response task's retries with backoff normally take.
+ */
+const MAX_POLL_TIME = 60 * 60 * 1000;
 
 /** @var {Set<number>} Usages already being watched, as the renderer calls init once per question. */
 const watched = new Set();
@@ -71,10 +77,12 @@ const createBanner = () => {
  *
  * @param {HTMLElement} banner
  * @param {{total: number, pending: number}} status
+ * @param {boolean} ownattempt whether the person viewing is the student who made the attempt.
  * @param {boolean} notify whether the student will be notified when grading has finished.
  */
-const showStatus = async(banner, status, notify) => {
-    let text = await getString('aigradingprogress', 'qbehaviour_queued_for_aitext', {
+const showStatus = async(banner, status, ownattempt, notify) => {
+    const key = ownattempt ? 'aigradingprogress' : 'aigradingprogressother';
+    let text = await getString(key, 'qbehaviour_queued_for_aitext', {
         graded: status.total - status.pending,
         total: status.total,
     });
@@ -88,9 +96,10 @@ const showStatus = async(banner, status, notify) => {
  * Start watching a usage.
  *
  * @param {number} qubaid the question usage id.
+ * @param {boolean} ownattempt whether the person viewing is the student who made the attempt.
  * @param {boolean} notify whether the student will be notified when grading has finished.
  */
-export const init = (qubaid, notify = false) => {
+export const init = (qubaid, ownattempt = false, notify = false) => {
     if (watched.has(qubaid)) {
         return;
     }
@@ -98,31 +107,41 @@ export const init = (qubaid, notify = false) => {
 
     const banner = createBanner();
     const started = Date.now();
+    let interval = POLL_INTERVAL;
 
     const poll = async() => {
         let status;
         try {
             status = await fetchStatus(qubaid);
         } catch (e) {
-            // Stop quietly. The per-question notices still tell the student to come back later.
+            // Stop quietly. The per-question notices still say the grade will appear later.
             return;
         }
         if (status.pending === 0) {
             if (banner) {
                 banner.className = 'alert alert-success qbehaviour_queued_for_aitext-status';
-                banner.textContent = await getString('aigradingfinished', 'qbehaviour_queued_for_aitext');
+                const key = ownattempt ? 'aigradingfinished' : 'aigradingfinishedother';
+                banner.textContent = await getString(key, 'qbehaviour_queued_for_aitext');
             }
-            await addToast(await getString('aigradingtoast', 'qbehaviour_queued_for_aitext'), {type: 'success'});
+            const toastkey = ownattempt ? 'aigradingtoast' : 'aigradingtoastother';
+            await addToast(await getString(toastkey, 'qbehaviour_queued_for_aitext'), {type: 'success'});
             // Leave the toast up long enough to read before the page reloads with the grades.
             setTimeout(() => window.location.reload(), RELOAD_DELAY);
             return;
         }
+        if (Date.now() - started >= MAX_POLL_TIME) {
+            if (banner) {
+                banner.className = 'alert alert-warning qbehaviour_queued_for_aitext-status';
+                banner.textContent = await getString('aigradingslow', 'qbehaviour_queued_for_aitext');
+            }
+            return;
+        }
         if (banner) {
-            await showStatus(banner, status, notify);
+            await showStatus(banner, status, ownattempt, notify);
         }
-        if (Date.now() - started < MAX_POLL_TIME) {
-            setTimeout(poll, POLL_INTERVAL);
-        }
+        // Back off, so many open review pages at the end of an exam do not swamp the server.
+        setTimeout(poll, interval);
+        interval = Math.min(interval * 2, MAX_POLL_INTERVAL);
     };
 
     poll();

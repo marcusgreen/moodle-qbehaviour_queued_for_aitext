@@ -28,7 +28,8 @@ with.
    is queued for it.
 3. The review page shows a notice on each waiting question, and a progress
    banner at the top, for example: *"Your answers have been submitted. 2 of 5
-   graded by AI so far."* The page checks for progress every 10 seconds.
+   graded by AI so far."* The page checks for progress after 10 seconds, then
+   less often, down to once a minute.
 4. Moodle's cron runs the tasks, which call the AI backend. The number of
    tasks running at once is limited by the concurrency setting.
 5. When a response has been graded, the attempt history shows a "Graded by AI"
@@ -52,8 +53,9 @@ there once the tasks have run.
 - **Cron must run frequently.** Responses stay in the "Requires grading" state
   until cron picks up their tasks. If cron only runs every few minutes,
   students will wait at least that long for feedback.
-- The review page stops checking for progress after 30 minutes. After that,
-  students have to reload the page themselves.
+- The review page stops checking for progress after an hour, and says that
+  grading is taking longer than expected. After that, students have to reload
+  the page themselves.
 
 ## What happens if grading fails
 
